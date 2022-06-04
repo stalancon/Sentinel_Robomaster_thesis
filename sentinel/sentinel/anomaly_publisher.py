@@ -9,7 +9,7 @@ class AnomalyPublisher(Node):
 
     def __init__(self):
         super().__init__('anomaly_publisher')
-        self.publisher_ = self.create_publisher(Bool, 'anomaly', 10)
+        self.publisher_ = self.create_publisher(Bool, '/anomaly', 10)
         timer_period = 0.5  # seconds
         self.timer = self.create_timer(timer_period, self.timer_callback)
         self.i = 0
@@ -19,10 +19,10 @@ class AnomalyPublisher(Node):
         
         # publish 'False' until we get an anomaly then publish 'True'
         # if (self.i > 7 and self.i < 9) or (self.i > 60 and self.i < 62):
-        if self.i > 53 and self.i < 55:
+        if self.i == 20:
             msg.data = True        
 
-        self.publisher_.publish(msg)
+            self.publisher_.publish(msg)
                      	
         self.i += 1
 

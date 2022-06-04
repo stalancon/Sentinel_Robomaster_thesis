@@ -29,6 +29,9 @@ setup(
         'follow_path = sentinel.follow_path_action:main',
         'sentinel = sentinel.sentinel:main',
         'follower = sentinel.follower:main',
+        'speed_controller = sentinel.speed_controller:main',
+        'followSpeed_controller = sentinel.followSpeed_controller:main',
+        'scenario_manager = sentinel.scenario_manager:main',
         ],
     },
 )

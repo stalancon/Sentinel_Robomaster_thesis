@@ -83,9 +83,9 @@ class NoiseEstimator(Node):
         self.tf_broadcaster = tf2_ros.transform_broadcaster.TransformBroadcaster(self)
 
         # initialize estimation
-        self.x = StateEstimation(L=5, epsilon=0.1)
-        self.y = StateEstimation(L=5, epsilon=0.1)
-        self.theta = StateEstimation(L=1, epsilon=0.1)
+        self.x = StateEstimation(L=1, epsilon=0.1)
+        self.y = StateEstimation(L=1, epsilon=0.1)
+        self.theta = StateEstimation(L=0.5, epsilon=0.1)
 
         self.odom_msg = Odometry()
 
@@ -104,8 +104,12 @@ class NoiseEstimator(Node):
 
         final_estimation = PoseStamped()
         final_estimation.header.frame_id = exact_pose.header.frame_id
+        o = exact_pose.pose.orientation
+        # theta_gt = 2 * np.arctan2(exact_pose.pose.orientation.z, exact_pose.pose.orientation.w)
 
-        theta_gt = 2 * np.arctan2(exact_pose.pose.orientation.z, exact_pose.pose.orientation.w)
+        orientation_gt = PyKDL.Rotation.Quaternion(o.x, o.y, o.z, o.w)
+        theta_gt, _, _ = orientation_gt.GetEulerZYX()
+
 
         x_e = self.x.update(exact_pose.pose.position.x)
         y_e = self.y.update(exact_pose.pose.position.y)

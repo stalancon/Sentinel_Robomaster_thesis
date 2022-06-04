@@ -87,15 +87,9 @@
    -->
   <arg name="movement_node" default="speed_controller"/>
 
-  <!-- choose the experimental scenario;
-    - 'simple'
-    - 'complex'
-   -->
-  <arg name="scenario" default="simple"/>
-
   <arg name="gap_dist" default="1.0"/>
   <arg name="gap_theta" default="0.52"/>
-  <arg name="linear_speed" default="0.5"/>
+  <arg name="linear_speed" default="0.3"/>
   <arg name="angular_speed" default="0.55"/>
   
   <arg name="sim" default="false"/>
@@ -110,7 +104,6 @@
 
   <node name="follower" pkg="sentinel" exec="follower" output="screen" args="--ros-args --log-level info">
     <param name='movement_node' value="$(var movement_node)"/>
-    <param name='scenario' value="$(var scenario)"/>
     <param name='gap_dist' value="$(var gap_dist)"/>
     <param name='gap_theta' value="$(var gap_theta)"/>
     <param name='linear_speed' value="$(var linear_speed)"/>
