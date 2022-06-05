@@ -68,7 +68,7 @@ class Follower(Node):
         self.onetime_check = True
         self.start_check = True
 
-        self.state = 7
+        self.state = 6
 
         if self.mov_node == 'action_client':
             # ACTION CLIENT
@@ -99,6 +99,7 @@ class Follower(Node):
 
         timer_period = 0.25  # seconds
         self.timer = self.create_timer(timer_period, self.timer_callback)
+
 
 
     def cb_params(self, data):
@@ -146,7 +147,7 @@ class Follower(Node):
 
                     self.anomaly_check = False
             
-            elif sentinel_state != 7:
+            elif sentinel_state != 6:
 
                 if self.mov_node == 'speed_controller':
                     # SPEED CONTROLLER
@@ -154,6 +155,13 @@ class Follower(Node):
                     # speed adjustment depending on the position of the sentinel
                     if self.status == 'Following':
                         delta_dist, delta_theta = distance_delta(self.current_pose, sentinel_pose)
+
+                        if delta_dist < (self.gap_dist * 2) and sentinel_state == 5:
+                            self.stop()
+                            self.state = 1
+                            self.flag = True
+                            self.follow_pub.publish(PathMsg(path=self.sentinel_path, state=1, linear_speed=self.linear_speed, angular_speed=self.angular_speed))
+                            self.status = 'Turning'
 
                         if delta_dist > (self.gap_dist * 2):
                             self.state = 3  # speed up
@@ -166,7 +174,14 @@ class Follower(Node):
                             self.state = 0  # normal speed 
                         
                         self.follow_pub.publish(PathMsg(path=self.sentinel_path, state=self.state, linear_speed=self.linear_speed, angular_speed=self.angular_speed))
+                
+                elif sentinel_state == 7:
+                    self.stop()
+                    self.status = 'Waiting'
 
+                elif self.status == 'Waiting' and sentinel_state == 0:
+                    self.status = 'Following'
+                    self.state = 0
 
                 if self.start_check:
                     self.status = 'Following'
@@ -341,6 +356,6 @@ def main(args=None):
     except KeyboardInterrupt:
         pass
 
-    # node.destroy_node()
+    node.destroy_node()
     rclpy.shutdown()
 

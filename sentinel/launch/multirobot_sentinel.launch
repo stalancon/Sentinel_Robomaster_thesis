@@ -40,7 +40,8 @@
   <arg name="gap_theta" default="0.52"/>
   <arg name="linear_speed" default="0.3"/>
   <arg name="angular_speed" default="0.55"/>
-  <arg name="scenario" default="3"/>
+  <arg name="teleop" default="off"/>
+  <arg name="path_type" default="simple"/>
 
   <arg name="sim" default="false"/>
   <let name="exact_pose" value="/sim_ros2_interface/$(var name)" if="$(var sim)"/>
@@ -80,8 +81,8 @@
   </node>
 
   <node name="scenario_manager" pkg="sentinel" exec="scenario_manager" output="screen" args="--ros-args --log-level info"
-     if="$(eval '\'$(var scenario)\' == \'4\'')">
-    <param name='path_type' value="simple"/>
+     if="$(eval '\'$(var teleop)\' == \'off\'')">
+    <param name='path_type'  value="$(var path_type)"/>
     <param name="sim" value="$(var sim)"/>
   </node>
 

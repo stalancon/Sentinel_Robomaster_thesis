@@ -36,7 +36,7 @@ class Speed_controller(Node):
 
         self.flag_check = False
 
-        self.past_dist = 10
+        self.last_dist = 20
 
 
     def pose_callback(self, noisy_pose):
@@ -65,6 +65,11 @@ class Speed_controller(Node):
 
                 if goal_pose == self.end_point:
                     dist_goal = self.end_zone.distance(pose_point)
+                    
+                    if dist_goal > self.last_dist:
+                        dist_goal = 0.2
+                    else:
+                        self.last_dist = dist_goal
 
                 # Check if the path is done
                 if goal_pose == self.end_point and dist_goal < 0.3:
@@ -101,9 +106,6 @@ class Speed_controller(Node):
                         target_theta = self.theta_array[0]
 
                         side = self.past_theta - target_theta
-
-                        current_theta = math.fmod(current_theta, 2*pi)
-                        target_theta = math.fmod(target_theta, 2*pi)
 
                         if self.state == 2:
 

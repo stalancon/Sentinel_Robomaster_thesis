@@ -71,6 +71,7 @@ class Sentinel(Node):
 
         self.path_to_follow = Path()
         self.poses_path = Path()
+        self.new_path = Path()
         self.start_flag = True
         self.path_updated = False
         self.follower_flag = False
@@ -78,10 +79,13 @@ class Sentinel(Node):
         self.double_path = False
         self.autonomy_flag = False
         self.once = True
+        self.malfunction_flag = False
+        self.turn_check = False
 
 
+        self.turn_counter = 0
         self.counter = 0
-        self.state = 7
+        self.state = 6
         self.status = 'Starting'
 
 
@@ -102,7 +106,6 @@ class Sentinel(Node):
 
         timer_period = 0.25  # seconds
         self.timer = self.create_timer(timer_period, self.timer_callback)
-
 
 
     def path_callback(self, path):
@@ -272,21 +275,21 @@ class Sentinel(Node):
 
             if self.mov_node == 'speed_controller':
 
-                # Keep track of safety gap
-                if self.state != 1 and not self.start_flag and self.state != 2 and self.path_received:
+                if not self.malfunction_flag:
+                    # Keep track of safety gap
+                    if self.state != 1 and not self.start_flag and self.state != 2 and self.path_received:
 
-                    delta_dist, delta_theta = distance_delta(follower_pose, self.current_pose)
+                        delta_dist, delta_theta = distance_delta(follower_pose, self.current_pose)
 
-                    if delta_dist > (self.gap_dist * 2):
-                        self.state = 5
-                    elif delta_dist > self.gap_dist or delta_theta > self.gap_theta or follower_state == 3:
-                        self.state = 4  # slow down
-                    else:
-                        self.state = 0  # normal speed 
-                    
-                    self.path_pub.publish(PathMsg(path=self.path_to_follow, state=self.state, linear_speed=self.linear_speed, angular_speed=self.angular_speed))
+                        if delta_dist > (self.gap_dist * 2):
+                            self.state = 5
+                        elif delta_dist > self.gap_dist or delta_theta > self.gap_theta or follower_state == 3:
+                            self.state = 4  # slow down
+                        else:
+                            self.state = 0  # normal speed 
+                        
+                        self.path_pub.publish(PathMsg(path=self.path_to_follow, state=self.state, linear_speed=self.linear_speed, angular_speed=self.angular_speed))
                 
-
 
                 # Readjust path to avoid hazard
                 elif self.state == 1 and self.double_path:
@@ -298,7 +301,6 @@ class Sentinel(Node):
         self.current_pose = noisy_pose
 
         if self.state == 1: # Check if there's been an anomaly
-            led_effect = LEDEffect.ON
             led_color = red
 
             if self.mov_node == 'speed_controller':
@@ -307,17 +309,17 @@ class Sentinel(Node):
                     self.path_pub.publish(PathMsg(path=self.path_to_follow, state=self.state, linear_speed=self.linear_speed, angular_speed=self.angular_speed))
                     self.anomaly_check = False
 
-        elif self.state == 5 or self.state == 7:
-            led_effect = LEDEffect.ON
+        elif self.state == 6:
             led_color = yellow
 
+        elif self.state == 5:
+            led_color = black
         else:
-            led_effect = LEDEffect.ON
             led_color = green
 
-        self.led_pub.publish(LEDEffect(effect=led_effect, color=led_color))
+        self.led_pub.publish(LEDEffect(effect=LEDEffect.ON, color=led_color))
 
-        if self.follower_flag and not self.path_received and self.state == 7:
+        if self.follower_flag and not self.path_received and self.state == 6:
             self.state = 0
 
         # Send the path to the movement node chosen to start the path
@@ -398,9 +400,15 @@ class Sentinel(Node):
 
 
     def malfunction_callback(self, msg):
-        self.state = 6
-        self.stop()
-        self.path_pub.publish(PathMsg(path=self.path_2, state=self.state))
+        if msg:
+
+            if not self.malfunction_flag:
+                self.state = 5
+                self.malfunction_flag = True
+
+                self.led_pub.publish(LEDEffect(effect=LEDEffect.ON, color=black))
+                self.path_pub.publish(PathMsg(path=self.path_to_follow, state=5))
+                self.get_logger().info('Something is wrong....')
 
 
     def turn(self):
@@ -409,9 +417,10 @@ class Sentinel(Node):
         self.velocity.angular.z = 0.55
         self.velocity_pub.publish(self.velocity)
 
-
     def stop(self):
-        self.velocity = Twist()
+        self.velocity.linear.x = 0.0
+        self.velocity.linear.y = 0.0
+        self.velocity.angular.z = 0.0
         self.velocity_pub.publish(self.velocity)
 
 def main(args=None):

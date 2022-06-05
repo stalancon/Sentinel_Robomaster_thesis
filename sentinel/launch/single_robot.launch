@@ -36,7 +36,8 @@
   <arg name="sim" default="false"/>
   <arg name="linear_speed" default="0.5"/>
   <arg name="angular_speed" default="0.55"/>
-  <arg name="scenario" default="1"/>
+  <arg name="teleop" default="off"/>
+  <arg name="path_type" default="simple"/>
 
   <let name="exact_pose" value="/sim_ros2_interface/$(var name)" if="$(var sim)"/>
   <let name="exact_pose" value="/optitrack/$(var name)" unless="$(var sim)"/>
@@ -75,8 +76,8 @@
   </node>
 
   <node name="scenario_manager" pkg="sentinel" exec="scenario_manager" output="screen" args="--ros-args --log-level info"
-     if="$(eval '\'$(var scenario)\' == \'2\'')">
-    <param name='path_type' value="simple"/>
+     if="$(eval '\'$(var teleop)\' == \'off\'')">
+    <param name='path_type' value="$(var path_type)"/>
     <param name="sim" value="$(var sim)"/>
   </node>
 

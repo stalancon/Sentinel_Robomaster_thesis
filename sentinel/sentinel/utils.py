@@ -1,6 +1,7 @@
 import PyKDL
+import math
 
-from math import dist
+from math import dist, pi
 
 
 def distance_delta(past_pose, current_pose):
@@ -21,5 +22,7 @@ def compute_theta(pose):
     o = pose.pose.orientation
     orientation_gt = PyKDL.Rotation.Quaternion(o.x, o.y, o.z, o.w)
     theta, _, _ = orientation_gt.GetEulerZYX()
+
+    theta = math.fmod(theta, 2*pi)
 
     return theta
