@@ -84,16 +84,6 @@ class FollowSpeed_controller(Node):
                     current_theta = math.fmod(current_theta, 2*pi)
                     target_theta = math.fmod(target_theta, 2*pi)
 
-                    # if current_theta > pi:
-                    #     current_theta = pi - current_theta
-                    # elif current_theta < -pi:
-                    #     current_theta = current_theta + pi
-                    
-                    # if target_theta > pi:
-                    #     target_theta = pi - target_theta
-                    # elif target_theta < -pi:
-                    #     target_theta = target_theta + pi
-
                     theta = target_theta - current_theta
 
                     if side > -0.1 and side < 0.1: # check if i need to turn
@@ -136,9 +126,7 @@ class FollowSpeed_controller(Node):
             self.theta_array.append(theta)
 
         self.path_array = line_array
-
         self.path_array.append(line_array[-1])
-
         self.path_line = LineString(self.path_array)
 
         self.path_created = True
@@ -167,6 +155,8 @@ class FollowSpeed_controller(Node):
         if not self.path_created:
             self.create_pathLine(path_data)
             self.path_created = True
+            self.status = 'start'
+            self.onetime_check = True
 
         else:
             self.update_path(path_data)
@@ -176,7 +166,9 @@ class FollowSpeed_controller(Node):
             self.onetime_check = False
             self.status = 'done'
             self.stop()
-            self.get_logger().info('Anomaly!! Going back to base...')
+            self.get_logger().info('Anomaly!!')
+            self.path_created = False
+            self.path_done =  []
         else:
 
             if self.state == 3:

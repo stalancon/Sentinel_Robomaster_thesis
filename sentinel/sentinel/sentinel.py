@@ -72,6 +72,8 @@ class Sentinel(Node):
         self.path_to_follow = Path()
         self.poses_path = Path()
         self.new_path = Path()
+        self.backtrack_path = Path()
+
         self.start_flag = True
         self.path_updated = False
         self.follower_flag = False
@@ -81,7 +83,7 @@ class Sentinel(Node):
         self.once = True
         self.malfunction_flag = False
         self.turn_check = False
-
+        self.readjust_flag = False
 
         self.turn_counter = 0
         self.counter = 0
@@ -114,10 +116,11 @@ class Sentinel(Node):
             self.path_to_follow = path
             self.path_received = True
         else:
-            if self.path_to_follow.poses != path.poses:
+            if self.path_to_follow.poses != path.poses and not self.double_path:
                 self.chosen_path = self.create_line_object(self.path_to_follow)
                 self.backup_path = self.create_line_object(path)
                 self.double_path = True
+                self.get_logger().info('we have two paths!')
 
 
     def cb_params(self, data):
@@ -136,47 +139,28 @@ class Sentinel(Node):
 
     def construct_path(self, path):
         pose_array = []
-        next_pose_check = False
 
         for i, pose in enumerate(path):
             path_check = False
             next_pose = PoseStamped()
             next_pose.pose.position.x = pose[0]
             next_pose.pose.position.y = pose[1]
-            n_point = [pose[0], pose[1]]
 
-            for j in self.path1_poses:
-                if n_point == j[:-1]:
+            try:
+                theta = math.atan((pose[1] - path[i-1][1]) / (pose[0] - path[i-1][0]))
+                if path[i-1][0] > pose[0] or i == 0:
+                    theta = pi
+                else:
+                    theta = 0.0
+            except:
 
-                    if j[-1] == 0.0:
-                        theta = j[-1] + pi
-                    else:
-                        theta = -j[-1]
-                    next_pose.pose.orientation.w = np.cos(theta/2)
-                    next_pose.pose.orientation.z = np.sin(theta/2)
-                    path_check = True
-            for j in self.path2_poses:
-                if n_point == j[:-1]:
-                    next_pose.pose.orientation.w = np.cos(j[2]/2)
-                    next_pose.pose.orientation.z = np.sin(j[2]/2)
-                    path_check = True
-            if not path_check:
-                try:
-                    theta = math.atan((pose[1] - path[i-1][1]) / (pose[0] - path[i-1][0]))
-                    if theta < 0.5 and theta > -0.5:
-                        theta = pi
-                except:
+                if path[i-1][1] < pose[1]:
+                    theta = pi/2
+                else:
+                    theta = -pi/2
 
-                    if path[i-1][1] < pose[1]:
-                        theta = pi/2
-                    else:
-                        theta = -   pi/2
-
-                # self.get_logger().info(f'p: {n_point}')
-                # self.get_logger().info(f't: {theta}')
-
-                next_pose.pose.orientation.w = np.cos(theta/2)
-                next_pose.pose.orientation.z = np.sin(theta/2)
+            next_pose.pose.orientation.w = np.cos(theta/2)
+            next_pose.pose.orientation.z = np.sin(theta/2)
 
             pose_array.append(next_pose)
 
@@ -208,7 +192,6 @@ class Sentinel(Node):
         self.stop()
 
         current_point = Point(self.current_pose.pose.position.x, self.current_pose.pose.position.y)
-        # self.get_logger().info(f'current pose: {current_point}')
 
         # Add buffer zone to the location of the follower
         follower_loc = Point(follower_pose.pose.position.x, follower_pose.pose.position.y).buffer(1)
@@ -227,18 +210,7 @@ class Sentinel(Node):
 
 
         # Move the intersecting part of the path 0.4 distance to the left
-        new_section = inter_path.parallel_offset(0.3, 'left', join_style=1)
-
-        # Split the line according to the intersecting points
-        first_part = split(self.chosen_path, inter_start)
-        second_part = split(self.chosen_path, inter_end)
-        
-        new_end = first_part.geoms[0]
-
-        try:
-            new_start = second_part.geoms[1]
-        except:
-            new_start = new_end
+        new_section = inter_path.parallel_offset(0.5, 'left', join_style=1)
 
                                 
         intersection_line = LineString(inter_end.coords[:] + new_section.coords[::-1] + inter_start.coords[:])
@@ -249,20 +221,58 @@ class Sentinel(Node):
         points = [intersection_line.interpolate(distance) for distance in distances]
         new_intersection = LineString(points)
 
-        new_path = LineString(new_start.coords[::-1] + new_intersection.coords[:] + new_end.coords[::-1])
+        self.backtrack_path.poses = self.construct_path(list(new_intersection.coords))
 
         # obtain the unique parts of both paths to create new path
-        paths = new_path.symmetric_difference(self.backup_path)
+        paths = self.chosen_path.symmetric_difference(self.backup_path)
 
         start = paths.geoms[0]
         end = paths.geoms[-1]
 
-        new_path_line = LineString(start.coords[:] + end.coords[:])
+        new_path_line = LineString(start.coords[:0:-1] + end.coords[1:])
+
+        new_p = Point(new_section.coords[0][0], new_section.coords[0][1])
+
+        new_p = new_path_line.interpolate(new_path_line.project(new_p))
+
+        def pairs(lst):
+            for i in range(1, len(lst)):
+                yield lst[i-1], lst[i]
+
+        line1 = []
+        line2 = []
+        cp = False
+
+        init_p = Point(new_path_line.coords[0][0], new_path_line.coords[0][1])
+        init_d = new_p.distance(init_p)
+
+        for pair in pairs(list(new_path_line.coords)):
+            pair_point = Point(pair)
+
+            d = new_p.distance(pair_point)
+
+            if d <= init_d:
+                init_d = d
+            else:
+                cp = True
+
+            if cp == False:
+                line1.append(pair[0])
+            if cp == True:
+                line2.append(pair[1])
+
+
+        line1 = LineString(line1)
+        line2 = LineString(line2)
+        
+        new_path_line = LineString(new_intersection.coords[:-1] + line2.coords[:])
 
         self.new_path.poses = self.construct_path(list(new_path_line.coords))
 
         self.turn_check = False
         self.path_updated = True
+
+        self.get_logger().info('we have a new path! ')
 
     def radio_callback(self, radio_msg):
         # Only take into account the messages from the follower robot
@@ -274,10 +284,17 @@ class Sentinel(Node):
                 self.follower_flag = True
 
             if self.mov_node == 'speed_controller':
+                
+                # Readjust path to avoid hazard
+                if self.state == 1 and self.double_path:
+                    if not self.readjust_flag:
+                        self.readjust_path(follower_pose)
+                        self.readjust_flag = True
 
-                if not self.malfunction_flag:
+                elif not self.malfunction_flag:
+
                     # Keep track of safety gap
-                    if self.state != 1 and not self.start_flag and self.state != 2 and self.path_received:
+                    if self.state != 1 and not self.start_flag and self.state != 7 and self.path_received:
 
                         delta_dist, delta_theta = distance_delta(follower_pose, self.current_pose)
 
@@ -289,12 +306,6 @@ class Sentinel(Node):
                             self.state = 0  # normal speed 
                         
                         self.path_pub.publish(PathMsg(path=self.path_to_follow, state=self.state, linear_speed=self.linear_speed, angular_speed=self.angular_speed))
-                
-
-                # Readjust path to avoid hazard
-                elif self.state == 1 and self.double_path:
-                    if not self.path_updated:
-                        self.readjust_path(follower_pose)
 
     def pose_callback(self, noisy_pose):
         
@@ -334,27 +345,40 @@ class Sentinel(Node):
 
             elif self.mov_node == 'speed_controller':
                 self.path_pub.publish(PathMsg(path=self.path_to_follow, state=self.state, linear_speed=self.linear_speed, angular_speed=self.angular_speed))
-
             self.once = False
 
 
         if self.double_path and self.state == 1:       
             if not self.turn_check:
 
-                if self.turn_counter < 125:
+                if self.turn_counter < 130:
                     self.turn()
-                    self.counter += 1
+                    # self.counter += 1
+                    self.turn_counter += 1 
                 else:
                     self.stop()
                     self.turn_check = True
-                    self.state = 2
+                    self.state = 7
+                    self.get_logger().info('done turning....')
 
-                    self.path_pub.publish(PathMsg(path=self.new_path, state=self.state, linear_speed=self.linear_speed, angular_speed=self.angular_speed))
-                    self.get_logger().info('path was sent')
+            if self.path_updated and self.turn_check:
+                self.path_updated = False
+                self.path_pub.publish(PathMsg(path=self.new_path, state=2, linear_speed=0.4, angular_speed=0.6))
+                self.get_logger().info('New path was sent')
+                end_pose = self.backtrack_path.poses[-1]
 
-                self.turn_counter += 1 
+                # Add buffer zone to the location of the follower
+                self.end_zone = Point(end_pose.pose.position.x, end_pose.pose.position.y).buffer(0.5)
 
-        self.counter += 1
+        if self.state == 7:
+            p = Point(noisy_pose.pose.position.x, noisy_pose.pose.position.y)
+
+            delta_dist = self.end_zone.distance(p)
+
+            if delta_dist < 0.1:
+                self.state = 0
+                self.get_logger().info('Follow me !! ')
+        # self.counter += 1
 
     def send_goal(self, path):
         goal_msg = FollowPath.Goal()

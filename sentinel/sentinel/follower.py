@@ -142,6 +142,7 @@ class Follower(Node):
                             self.followPath_goal_handle = None
                     elif self.mov_node == 'speed_controller':
                         # SPEED CONTROLLER
+
                         self.follow_pub.publish(PathMsg(path=self.sentinel_path, state=1, linear_speed=self.linear_speed, angular_speed=self.angular_speed))
                         self.status = 'Turning'
 
@@ -175,18 +176,38 @@ class Follower(Node):
                         
                         self.follow_pub.publish(PathMsg(path=self.sentinel_path, state=self.state, linear_speed=self.linear_speed, angular_speed=self.angular_speed))
                 
-                elif sentinel_state == 7:
+                if sentinel_state == 7:
                     self.stop()
                     self.status = 'Waiting'
+
+                    if self.state != 7:
+                        self.get_logger().info('Waiting for Sentinel to say it is safe to follow....')
+                        self.state = 7
+                        self.sentinel_path = Path()
 
                 elif self.status == 'Waiting' and sentinel_state == 0:
                     self.status = 'Following'
                     self.state = 0
+                    self.get_logger().info('Lets go!')
+                    self.counter = 0
+                    self.flag = False
 
                 if self.start_check:
                     self.status = 'Following'
                     self.get_logger().info('Lets go!')
                     self.start_check = False
+
+                if sentinel_state == 5:
+                    past_pose = self.sentinel_path.poses[-1]
+                    delta_dist, delta_theta = distance_delta(past_pose, sentinel_pose)
+                    if delta_dist < (self.gap_dist * 2):
+                        self.state = 1
+                        self.get_logger().info('Something is wrong! Lets go back to base...')
+                        self.state = 'Turning'
+                        self.flag = True
+
+                # if sentinel_state == 1 and self.turn_check:
+                #     self.status = 'Base'
 
                 # Create/Update sentinel path
                 if len(self.sentinel_path.poses) == 0:
@@ -281,7 +302,10 @@ class Follower(Node):
                         self.counter += 1
                     else:
                         self.stop()
-                        self.status = 'Base'
+
+                        if self.state == 1:
+                            self.status = 'Base'
+                            self.get_logger().info('Going back to base')
 
                 elif self.onetime_check and self.status == 'Base':
 

@@ -34,8 +34,6 @@ class Speed_controller(Node):
         self.path_created = False
         self.path_check = True
 
-        self.flag_check = False
-
         self.last_dist = 20
 
 
@@ -83,62 +81,69 @@ class Speed_controller(Node):
                             self.get_logger().info('End of path')
                 else:
                     
-                    if dist_goal < 0.1:
+                    if dist_goal < 0.2:
                         for i, p in enumerate(list(self.path_line.coords)):
                             if i == 0 and Point(p) == goal_pose:
                                 self.path_line = LineString(self.path_line.coords[i+1:]) 
                                 self.past_theta = self.theta_array[0]
                                 self.theta_array = self.theta_array[i+1:]  
+                                
+                    for i, p in enumerate(list(self.path_line.coords)):
+                        if i == 0 and Point(p) != goal_pose:
+                            goal_pose = Point(self.path_line.coords[i+1])
+                            self.path_line = LineString(self.path_line.coords[i+1:]) 
+                            self.past_theta = self.theta_array[0]
+                            self.theta_array = self.theta_array[i+1:]  
+
+                    # Unit vector
+                    vector = [goal_pose.x - pose_point.x, goal_pose.y - pose_point.y]
+                    unit_vector = vector / np.linalg.norm(vector)
+
+                    current_theta = compute_theta(noisy_pose)
+
+                    target_theta = self.theta_array[0]
+
+                    side = self.past_theta - target_theta
+
+                    if self.state == 2:
+
+                        if target_theta >= 0.0 and current_theta < 0.0:
+                            target_theta = -target_theta
+                        if target_theta <= 0.0 and current_theta > 0.0:
+                            target_theta = abs(target_theta)
+
+                    theta = target_theta - current_theta
+                    
+                    if side == 0.0: # check if i need to turn
+
+                        if abs(theta) > 0.15:
+                            self.velocity.angular.z = 0.35 * -theta
+                        else:
+                            self.velocity.angular.z = 0.0
                     else:
-                        for i, p in enumerate(list(self.path_line.coords)):
-                            if i == 0 and Point(p) != goal_pose:
-                                goal_pose = Point(self.path_line.coords[i+1])
-                                self.path_line = LineString(self.path_line.coords[i+1:]) 
-                                self.past_theta = self.theta_array[0]
-                                self.theta_array = self.theta_array[i+1:]  
-
-                        # Unit vector
-                        vector = [goal_pose.x - pose_point.x, goal_pose.y - pose_point.y]
-                        unit_vector = vector / np.linalg.norm(vector)
-
-                        current_theta = compute_theta(noisy_pose)
-
-                        target_theta = self.theta_array[0]
-
-                        side = self.past_theta - target_theta
-
-                        if self.state == 2:
-
-                            if target_theta >= 0.0 and current_theta < 0.0:
-                                target_theta -= pi
-                            if target_theta <= 0.0 and current_theta > 0.0:
-                                target_theta += pi
-
-                        theta = target_theta - current_theta
-                        
-                        if side == 0.0: # check if i need to turn
-
-                            if abs(theta) > 0.15:
-                                self.velocity.angular.z = 0.35 * -theta
-                            else:
-                                self.velocity.angular.z = 0.0
+                        if side < 0.0:
+                            # turn left
+                            theta = -theta
                         else:
-                            if side < 0.0:
-                                # turn left
-                                theta = -theta
-                            else:
-                                # turn right
-                                theta = abs(theta)
+                            # turn right
+                            theta = abs(theta)
 
-                            self.velocity.angular.z = self.angular_speed * theta
-                        
-                        if abs(vector[1]) > abs(vector[0]):
-                            self.velocity.linear.x = self.linear_speed * abs(unit_vector[1])
-                        else:
-                            self.velocity.linear.x = self.linear_speed * abs(unit_vector[0])
+                        self.velocity.angular.z = self.angular_speed * theta
+                    
+                    # if self.state == 2:
+                    #     self.get_logger().info(f'gp {goal_pose}')
+                    #     self.get_logger().info(f'c pose {pose_point}')
+                    #     self.get_logger().info(f't thet {target_theta}')
+                    #     self.get_logger().info(f'c theta {current_theta}')
+                    #     self.get_logger().info(f't {theta}')
+                    
+                    if abs(vector[1]) > abs(vector[0]):
+                        self.velocity.linear.x = self.linear_speed * abs(unit_vector[1])
+                    else:
+                        self.velocity.linear.x = self.linear_speed * abs(unit_vector[0])
 
 
-                        self.velocity_pub.publish(self.velocity)
+                    self.velocity_pub.publish(self.velocity)
 
     def create_pathLine(self, path_data):
         
@@ -169,6 +174,9 @@ class Speed_controller(Node):
         # Add buffer zone to the location of the follower
         self.end_zone = Point(line_array[-1]).buffer(0.1)
 
+        if self.state == 2:
+            self.get_logger().info(f'path {self.path_line}')
+            self.get_logger().info(f'thetas {self.theta_array}')
 
     def path_callback(self, path_msg):
         path_data = path_msg.path
@@ -183,7 +191,7 @@ class Speed_controller(Node):
             self.status = 'start'
             self.path_created = True
             self.onetime_check = True
-            self.get_logger().info('New path created!')
+            self.path_check = True
  
         if self.state == 1 and self.onetime_check:
             self.onetime_check = False
@@ -191,7 +199,7 @@ class Speed_controller(Node):
             self.stop()
             self.get_logger().info('Anomaly!!')
             self.path_created = False
-            self.flag_check = True
+
         else:
 
             if self.state == 4:
@@ -203,6 +211,7 @@ class Speed_controller(Node):
             elif self.state == 5:
                 self.linear_speed = 0.0  # stop
                 self.angular_speed = 0.0
+            
 
     def stop(self):
         self.velocity.linear.x = 0.0
