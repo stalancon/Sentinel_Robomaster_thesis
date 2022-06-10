@@ -2,9 +2,7 @@
 
 import rclpy
 import numpy as np
-import math
 
-from math import dist, pi
 from rclpy.node import Node
 from shapely.geometry import LineString, Point
 from geometry_msgs.msg import PoseStamped, Pose, Twist
@@ -105,13 +103,6 @@ class Speed_controller(Node):
 
                     side = self.past_theta - target_theta
 
-                    if self.state == 2:
-
-                        if target_theta >= 0.0 and current_theta < 0.0:
-                            target_theta = -target_theta
-                        if target_theta <= 0.0 and current_theta > 0.0:
-                            target_theta = abs(target_theta)
-
                     theta = target_theta - current_theta
                     
                     if side == 0.0: # check if i need to turn
@@ -129,13 +120,6 @@ class Speed_controller(Node):
                             theta = abs(theta)
 
                         self.velocity.angular.z = self.angular_speed * theta
-                    
-                    # if self.state == 2:
-                    #     self.get_logger().info(f'gp {goal_pose}')
-                    #     self.get_logger().info(f'c pose {pose_point}')
-                    #     self.get_logger().info(f't thet {target_theta}')
-                    #     self.get_logger().info(f'c theta {current_theta}')
-                    #     self.get_logger().info(f't {theta}')
                     
                     if abs(vector[1]) > abs(vector[0]):
                         self.velocity.linear.x = self.linear_speed * abs(unit_vector[1])

@@ -157,7 +157,7 @@ class Sentinel(Node):
                 if path[i-1][1] < pose[1]:
                     theta = pi/2
                 else:
-                    theta = -pi/2
+                    theta = (3*pi)/2
 
             next_pose.pose.orientation.w = np.cos(theta/2)
             next_pose.pose.orientation.z = np.sin(theta/2)
@@ -208,18 +208,40 @@ class Sentinel(Node):
         inter_start = Point(inter_path.coords[0][0], inter_path.coords[0][1])
         inter_end = Point(inter_path.coords[-1][0], inter_path.coords[-1][1])
 
+        # Check which side to turn to
+        def turnLeft(a, b, c):
+            return ((b.x - a.x)*(c.y - a.y) - (b.y - a.y)*(c.x - a.x)) < 0
 
-        # Move the intersecting part of the path 0.4 distance to the left
-        new_section = inter_path.parallel_offset(0.5, 'left', join_style=1)
 
-                                
-        intersection_line = LineString(inter_end.coords[:] + new_section.coords[::-1] + inter_start.coords[:])
+        side_left = turnLeft(inter_start, inter_end, Point(follower_pose.pose.position.x, follower_pose.pose.position.y))
 
-        # create more points on the intersection line
-        num_points = 7
-        distances = np.linspace(0, intersection_line.length, num_points)
-        points = [intersection_line.interpolate(distance) for distance in distances]
-        new_intersection = LineString(points)
+        if side_left:
+            self.get_logger().info('path on the left')
+            # Move the intersecting part of the path 'x' distance to the left
+            new_section = inter_path.parallel_offset(0.5, 'left', join_style=1)
+
+            
+            intersection_line = LineString(inter_end.coords[:] + new_section.coords[::-1] + inter_start.coords[:])
+
+            # create more points on the intersection line
+            num_points = 7
+            distances = np.linspace(0, intersection_line.length, num_points)
+            points = [intersection_line.interpolate(distance) for distance in distances]
+            new_intersection = LineString(points)
+            self.get_logger().info(f' intersection: {new_intersection}')
+
+        else:
+            self.get_logger().info('path on the right')
+            # Move the intersecting part of the path 'x' distance to the right
+            new_section = inter_path.parallel_offset(0.5, 'right', join_style=1)
+          
+            intersection_line = LineString(inter_end.coords[:] + new_section.coords[:] + inter_start.coords[:])
+
+            # create more points on the intersection line
+            num_points = 7
+            distances = np.linspace(0, intersection_line.length, num_points)
+            points = [intersection_line.interpolate(distance) for distance in distances]
+            new_intersection = LineString(points)
 
         self.backtrack_path.poses = self.construct_path(list(new_intersection.coords))
 
@@ -227,9 +249,9 @@ class Sentinel(Node):
         paths = self.chosen_path.symmetric_difference(self.backup_path)
 
         start = paths.geoms[0]
-        end = paths.geoms[-1]
+        finish = paths.geoms[-1]
 
-        new_path_line = LineString(start.coords[:0:-1] + end.coords[1:])
+        new_path_line = LineString(start.coords[:0:-1] + finish.coords[1:])
 
         new_p = Point(new_section.coords[0][0], new_section.coords[0][1])
 
@@ -239,7 +261,6 @@ class Sentinel(Node):
             for i in range(1, len(lst)):
                 yield lst[i-1], lst[i]
 
-        line1 = []
         line2 = []
         cp = False
 
@@ -256,17 +277,13 @@ class Sentinel(Node):
             else:
                 cp = True
 
-            if cp == False:
-                line1.append(pair[0])
             if cp == True:
                 line2.append(pair[1])
 
-
-        line1 = LineString(line1)
         line2 = LineString(line2)
         
         new_path_line = LineString(new_intersection.coords[:-1] + line2.coords[:])
-
+        self.get_logger().info(f'path: {new_path_line}')
         self.new_path.poses = self.construct_path(list(new_path_line.coords))
 
         self.turn_check = False
@@ -351,7 +368,7 @@ class Sentinel(Node):
         if self.double_path and self.state == 1:       
             if not self.turn_check:
 
-                if self.turn_counter < 130:
+                if self.turn_counter < 110:
                     self.turn()
                     # self.counter += 1
                     self.turn_counter += 1 
@@ -424,6 +441,7 @@ class Sentinel(Node):
 
 
     def malfunction_callback(self, msg):
+
         if msg:
 
             if not self.malfunction_flag:

@@ -81,9 +81,6 @@ class FollowSpeed_controller(Node):
 
                     side = self.past_theta - target_theta
 
-                    current_theta = math.fmod(current_theta, 2*pi)
-                    target_theta = math.fmod(target_theta, 2*pi)
-
                     theta = target_theta - current_theta
 
                     if side > -0.1 and side < 0.1: # check if i need to turn

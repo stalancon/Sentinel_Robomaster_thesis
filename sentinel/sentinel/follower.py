@@ -4,7 +4,7 @@ import rclpy
 import numpy as np
 
 from rclpy.node import Node
-
+from math import pi
 from geometry_msgs.msg import PoseStamped, Pose, Twist
 from nav_msgs.msg import Path
 from std_msgs.msg import ColorRGBA
@@ -13,7 +13,7 @@ from sentinel_msgs.msg import Radio, PathMsg
 from rclpy.action import ActionClient
 from sentinel_msgs.action import FollowPath
 from rcl_interfaces.msg import SetParametersResult
-from sentinel.utils import distance_delta
+from sentinel.utils import compute_theta, distance_delta
 
 blue = ColorRGBA(r=0.0, g=1.0, b=1.0, a=0.0)
 black = ColorRGBA(r=0.0, g=0.0, b=0.0, a=0.0)
@@ -142,11 +142,14 @@ class Follower(Node):
                             self.followPath_goal_handle = None
                     elif self.mov_node == 'speed_controller':
                         # SPEED CONTROLLER
+                        self.state = 1
 
-                        self.follow_pub.publish(PathMsg(path=self.sentinel_path, state=1, linear_speed=self.linear_speed, angular_speed=self.angular_speed))
+                        self.follow_pub.publish(PathMsg(path=self.sentinel_path, state=self.state, linear_speed=self.linear_speed, angular_speed=self.angular_speed))
                         self.status = 'Turning'
 
                     self.anomaly_check = False
+                
+                
             
             elif sentinel_state != 6:
 
@@ -197,17 +200,14 @@ class Follower(Node):
                     self.get_logger().info('Lets go!')
                     self.start_check = False
 
-                if sentinel_state == 5:
+                if sentinel_state == 5 and self.state != 1:
                     past_pose = self.sentinel_path.poses[-1]
                     delta_dist, delta_theta = distance_delta(past_pose, sentinel_pose)
                     if delta_dist < (self.gap_dist * 2):
                         self.state = 1
                         self.get_logger().info('Something is wrong! Lets go back to base...')
-                        self.state = 'Turning'
+                        self.status = 'Turning'
                         self.flag = True
-
-                # if sentinel_state == 1 and self.turn_check:
-                #     self.status = 'Base'
 
                 # Create/Update sentinel path
                 if len(self.sentinel_path.poses) == 0:
@@ -272,7 +272,13 @@ class Follower(Node):
                     # SPEED CONTROLLER
                     if sentinel_pose not in self.sentinel_goals:
                         self.sentinel_goals.append(sentinel_pose)
+
+                        theta = compute_theta(noisy_pose)
+                        theta += pi
+                        noisy_pose.pose.orientation.w = np.cos(theta/2)
+                        noisy_pose.pose.orientation.z = np.sin(theta/2)
                         self.follower_path.poses.insert(0, noisy_pose)
+
                     self.follow_pub.publish(PathMsg(path=self.sentinel_path, state=self.state, linear_speed=self.linear_speed, angular_speed=self.angular_speed))
 
 
@@ -297,20 +303,22 @@ class Follower(Node):
                 if self.status == 'Turning':
 
                     # if self.counter < 420:
-                    if self.counter < 110:
+                    if self.counter < 105:
                         self.turn()
                         self.counter += 1
                     else:
                         self.stop()
 
-                        if self.state == 1:
-                            self.status = 'Base'
-                            self.get_logger().info('Going back to base')
+                        # if self.state == 1:
+                        #     self.status = 'Base'
+                        #     self.get_logger().info('Going back to base')
+                        # else:
+                        #     self.flag = False
 
                 elif self.onetime_check and self.status == 'Base':
 
                     self.follower_path.poses = self.follower_path.poses[1:]
-                    self.path_pub.publish(PathMsg(path=self.follower_path, state = 2, linear_speed=self.linear_speed, angular_speed=self.angular_speed))
+                    self.path_pub.publish(PathMsg(path=self.follower_path, state=2, linear_speed=self.linear_speed, angular_speed=self.angular_speed))
 
                     self.onetime_check = False
 
