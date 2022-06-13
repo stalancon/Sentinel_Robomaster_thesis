@@ -51,6 +51,7 @@
   <!-- the rate [Hz] at which to publish the sensor adapter values -->
   <arg name="sensor_adapter_rate" default="10"/>
 
+  <group>
   <include file="$(find-pkg-share robomaster_ros)/launch/main.launch">
     <arg name="arm" value="false"/>
     <arg name="gripper" value="false"/>
@@ -74,6 +75,7 @@
     <arg name="sensor_adapter" value="$(var sensor_adapter)"/>
     <arg name="sensor_adapter_rate" value="$(var sensor_adapter_rate)"/>
   </include>
+  </group>
 
   <!-- orientation for the robot when going back to base;
     - 0: normal
@@ -96,7 +98,9 @@
   <let name="exact_pose" value="/sim_ros2_interface/$(var name)" if="$(var sim)"/>
   <let name="exact_pose" value="/optitrack/$(var name)" unless="$(var sim)"/>
  
-  <!-- $<push-ros-namespace namespace="$(var name)"/> -->
+
+  <group>
+  <push-ros-namespace namespace="$(var name)"/>
 
   <node name="noise_estimation" pkg="sentinel" exec="noise" output="screen" args="--ros-args --log-level info">
     <remap from="exact_pose" to="$(var exact_pose)"/>
@@ -121,6 +125,8 @@
 
     <node name="speed_controller" pkg="sentinel" exec="speed_controller" output="screen" args="--ros-args --log-level info">
     </node>
+  </group>
+
   </group>
 
 </launch>

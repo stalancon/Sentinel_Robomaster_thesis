@@ -6,9 +6,9 @@
 
   <push-ros-namespace namespace="$(var name)"/>
 
-  <node name="joy" pkg="joy" exec="joy_node" output="screen" args="--ros-args --log-level info">
+  <!-- <node name="joy" pkg="joy" exec="joy_node" output="screen">
     <param name="device_id" value="$(var joy_dev)" />
-  </node>
+  </node> -->
 
   <node pkg="joy_teleop" exec="joy_teleop" name="joy_teleop" output="screen" args="--ros-args --log-level info">
     <param from="$(find-pkg-share sentinel)/config/joy_config_$(var model).yaml"/>

@@ -19,7 +19,7 @@ class AnomalyPublisher(Node):
         
         # publish 'False' until we get an anomaly then publish 'True'
         # if (self.i > 7 and self.i < 9) or (self.i > 60 and self.i < 62):
-        if self.i == 30:
+        if self.i == 55:
             msg.data = True        
 
             self.publisher_.publish(msg)

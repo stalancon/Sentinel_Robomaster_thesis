@@ -47,7 +47,7 @@
   <let name="exact_pose" value="/sim_ros2_interface/$(var name)" if="$(var sim)"/>
   <let name="exact_pose" value="/optitrack/$(var name)" unless="$(var sim)"/>
  
-
+  <group>
   <include file="$(find-pkg-share robomaster_ros)/launch/main.launch">
     <arg name="gimbal" value="true"/>
     <arg name="blaster" value="false"/>
@@ -68,8 +68,10 @@
     <arg name="sensor_adapter" value="$(var sensor_adapter)"/>
     <arg name="sensor_adapter_rate" value="$(var sensor_adapter_rate)"/>
   </include>
+  </group>
 
-  <!-- $<push-ros-namespace namespace="$(var name)"/> -->
+  <group>
+  <push-ros-namespace namespace="$(var name)"/>
 
   <node name="display_battery" pkg="robomaster_ros" exec="display_battery" output="screen"
      if="$(eval '\'$(var display_battery)\' != \'off\'')">
@@ -108,5 +110,7 @@
   <node name="anomaly_publisher" pkg="sentinel" exec="talker" output="screen" args="--ros-args --log-level info"
      if="$(eval '\'$(var anomaly_pub)\' == \'on\'')">
   </node>
+
+  </group>
 
 </launch>

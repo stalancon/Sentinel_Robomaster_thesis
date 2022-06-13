@@ -8,7 +8,7 @@ import tf2_ros
 from rclpy.node import Node
 from geometry_msgs.msg import PoseStamped, Pose
 from nav_msgs.msg import Odometry
-
+from sentinel.utils import  frame_from_pose, transform_from_state, pose_from_frame, transform_msg, transform_from_odom_msg
 
 def wiener_update(value, tau, time_step):
     return np.exp(-time_step / tau) * value + np.sqrt(2 * time_step / tau) * np.random.normal(0, 1)
@@ -30,40 +30,7 @@ class StateEstimation:
         self._error =  wiener_update(self._error, self.L, delta)
         return gt + self.epsilon * self._error
 
-def frame_from_pose(pose: geometry_msgs.msg.Pose) -> PyKDL.Frame:
-    return PyKDL.Frame(
-            PyKDL.Rotation.Quaternion(pose.orientation.x, pose.orientation.y, pose.orientation.z, pose.orientation.w),
-            PyKDL.Vector(pose.position.x, pose.position.y, pose.position.z)
-    )
-
-def pose_from_frame(frame: PyKDL.Frame) -> geometry_msgs.msg.Pose:
-    q = frame.M.GetQuaternion()
-    p = frame.p
-    return geometry_msgs.msg.Pose(
-            position=geometry_msgs.msg.Point(x=p.x(), y=p.y(), z=p.z()),
-            orientation=geometry_msgs.msg.Quaternion(x=q[0], y=q[1], z=q[2], w=q[3]))
-
-def transform_from_odom_msg(odom_msg: Odometry):
-    position_msg = odom_msg.pose.pose.position
-    pos = PyKDL.Vector(position_msg.x, position_msg.y, position_msg.z)
-    quaterion_msg = odom_msg.pose.pose.orientation
-    rot = PyKDL.Rotation.Quaternion(quaterion_msg.x, quaterion_msg.y, quaterion_msg.z, quaterion_msg.w)
-    return PyKDL.Frame(V=pos, R=rot)
-    
-def transform_from_state(x: float, y: float, theta: float):
-    pos = PyKDL.Vector(x, y, 0.0)
-    rot = PyKDL.Rotation.RotZ(theta)
-    return PyKDL.Frame(V=pos, R=rot)
-
-def transform_msg(transform: PyKDL.Frame) -> geometry_msgs.msg.Transform:
-    msg = geometry_msgs.msg.Transform()
-    p = transform.p
-    msg.translation = geometry_msgs.msg.Vector3(x=float(p[0]), y=float(p[1]), z=float(p[2]))
-    q = transform.M.GetQuaternion()
-    msg.rotation = geometry_msgs.msg.Quaternion(x=float(q[0]), y=float(q[1]), z=float(q[2]), w=float(q[3]))
-    return msg
-
-
+ 
 class NoiseEstimator(Node):
 
     def __init__(self):

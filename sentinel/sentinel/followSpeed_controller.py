@@ -9,8 +9,7 @@ from rclpy.node import Node
 from shapely.geometry import LineString, Point
 from geometry_msgs.msg import PoseStamped, Pose, Twist
 from sentinel_msgs.msg import PathMsg
-from sentinel.utils import compute_theta
-
+from sentinel.utils import compute_theta,  frame_from_pose, transform_from_state, pose_from_frame
 
 class FollowSpeed_controller(Node):
 
@@ -24,6 +23,9 @@ class FollowSpeed_controller(Node):
         self.create_subscription(PoseStamped,'noisy_pose', self.pose_callback, 10)
         self.pose = Pose()
 
+        # self.goal_pose_pub = self.create_publisher(PoseStamped, '/goal_pose_follower',1)
+        # self.gp = PoseStamped()
+
         # velocity publisher
         self.velocity_pub = self.create_publisher(Twist, 'cmd_vel', 1)
         self.velocity = Twist()
@@ -34,77 +36,57 @@ class FollowSpeed_controller(Node):
         self.status = 'start'
         self.counter = 0
 
-        self.path_done = []
 
     def pose_callback(self, noisy_pose):
 
         if self.path_created:
 
             if not self.status == 'done':
+                self.gp.header.frame_id = noisy_pose.header.frame_id
 
                 pose_point = Point(noisy_pose.pose.position.x, noisy_pose.pose.position.y)
 
                 # Get the point in the line that's closest to the current pose
                 goal_pose = self.path_line.interpolate(self.path_line.project(pose_point))
 
-                # self.get_logger().info(f'goal p: {goal_pose}')
+                target_theta = goal_pose.z
+                current_theta = compute_theta(noisy_pose)
+                
+                # obtain the target pose with respect to the current robot frame
+                current_pose = frame_from_pose(noisy_pose.pose)
+                target_pose = transform_from_state(goal_pose.x, goal_pose.y, target_theta)
+                next_pose = pose_from_frame(current_pose.Inverse() * target_pose)
 
-                # Get distance between the current position and the goal pose
-                dist_goal = goal_pose.distance(pose_point)
+                # Unit vector
+                vector = [next_pose.position.x, next_pose.position.y]
+                
+                theta = target_theta - current_theta
 
-                if dist_goal < 0.1 and len(self.path_line.coords) > 2:
-                    # If we are close enough to the goal pose, eliminate pose from path 
-                    for i, p in enumerate(list(self.path_line.coords)):
-                        if i == 0 and Point(p) == goal_pose:
-                            self.path_line = LineString(self.path_line.coords[i+1:]) 
-                            self.past_theta = self.theta_array[0]
-                            self.theta_array = self.theta_array[i+1:] 
-                            self.path_done.append(p) 
-                else:
+                theta = np.fmod(theta,2*pi)
 
-                    # If we passed the goal pose, eliminate pose from path and change goal pose to next pose in path
-                    if len(self.path_line.coords) > 2:
-                        for i, p in enumerate(list(self.path_line.coords)):
-                            if i == 0 and Point(p) != goal_pose:
-                                goal_pose = Point(self.path_line.coords[i+1])
-                                self.path_line = LineString(self.path_line.coords[i+1:]) 
-                                self.past_theta = self.theta_array[0]
-                                self.theta_array = self.theta_array[i+1:]
-                                self.path_done.append(p)
+                if theta > pi:
+                    theta -= 2*pi
+                elif theta < -pi:
+                    theta += 2*pi
 
-                    # Unit vector
-                    vector = [goal_pose.x - pose_point.x, goal_pose.y - pose_point.y]
-                    unit_vector = vector / np.linalg.norm(vector)
+                self.velocity.angular.z = self.angular_speed * theta
 
-                    target_theta = self.theta_array[0]
-                    current_theta = compute_theta(noisy_pose)
+                k = 1
+                self.velocity.linear.x = k * vector[0] + self.linear_speed * np.cos(theta)
+                self.velocity.linear.y = k * vector[1] + self.linear_speed * np.sin(theta)
 
-                    side = self.past_theta - target_theta
+                speed = np.sqrt(self.velocity.linear.x ** 2 + self.velocity.linear.y ** 2)
+                if speed > self.linear_speed:
+                    self.velocity.linear.x *= self.linear_speed/speed
+                    self.velocity.linear.y *= self.linear_speed/speed
 
-                    theta = target_theta - current_theta
+                self.velocity_pub.publish(self.velocity)
 
-                    if side > -0.1 and side < 0.1: # check if i need to turn
-
-                        if abs(theta) > 0.2:
-                            self.velocity.angular.z = 0.35 * -theta
-                        else:
-                            self.velocity.angular.z = 0.0
-                    else:
-                        if side < 0.0:
-                            # turn left
-                            theta = -theta
-                        else:
-                            # turn right
-                            theta = abs(theta)
-
-                        self.velocity.angular.z = self.angular_speed * theta
-                    
-                    if abs(vector[1]) > abs(vector[0]):
-                        self.velocity.linear.x = self.linear_speed * abs(unit_vector[1])
-                    else:
-                        self.velocity.linear.x = self.linear_speed * abs(unit_vector[0])
-
-                    self.velocity_pub.publish(self.velocity)
+                # self.gp.pose.position.x = goal_pose.x
+                # self.gp.pose.position.y = goal_pose.y
+                # self.gp.pose.orientation.w = np.cos(target_theta/2)
+                # self.gp.pose.orientation.z = np.sin(target_theta/2)
+                # self.goal_pose_pub.publish(self.gp)
 
 
     def create_pathLine(self, path_data):
@@ -121,10 +103,14 @@ class FollowSpeed_controller(Node):
             theta = compute_theta(pose)
 
             self.theta_array.append(theta)
+        
+        self.theta_array.append(self.theta_array[-1])
+        self.theta_array = np.unwrap(self.theta_array)
 
         self.path_array = line_array
         self.path_array.append(line_array[-1])
-        self.path_line = LineString(self.path_array)
+
+        self.path_line = LineString([(x, y, t) for (x, y), t in zip(self.path_array, self.theta_array)])
 
         self.path_created = True
 
@@ -135,13 +121,13 @@ class FollowSpeed_controller(Node):
         for pose in path_data.poses:
             point_x = pose.pose.position.x
             point_y = pose.pose.position.y
-            point = (point_x, point_y)
 
             theta = compute_theta(pose)
 
-            if point not in list(self.path_line.coords) and point not in self.path_done:
+            point = (point_x, point_y, theta)
+
+            if point not in list(self.path_line.coords):
                 self.path_line = LineString(self.path_line.coords[:] + [point]) 
-                self.theta_array.append(theta)
 
     def path_callback(self, msg):
         path_data = msg.path

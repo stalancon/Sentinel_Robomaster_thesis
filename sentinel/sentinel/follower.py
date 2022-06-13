@@ -2,6 +2,7 @@
 
 import rclpy
 import numpy as np
+import math
 
 from rclpy.node import Node
 from math import pi
@@ -13,7 +14,9 @@ from sentinel_msgs.msg import Radio, PathMsg
 from rclpy.action import ActionClient
 from sentinel_msgs.action import FollowPath
 from rcl_interfaces.msg import SetParametersResult
-from sentinel.utils import compute_theta, distance_delta
+from shapely.geometry import LineString, Point
+from shapely.ops import split
+from sentinel.utils import compute_theta, construct_path, distance_delta, find_path, create_line_object
 
 blue = ColorRGBA(r=0.0, g=1.0, b=1.0, a=0.0)
 black = ColorRGBA(r=0.0, g=0.0, b=0.0, a=0.0)
@@ -35,6 +38,8 @@ class Follower(Node):
         # Velocity publisher
         self.velocity_pub = self.create_publisher(Twist, 'cmd_vel', 10)
         self.velocity = Twist()
+
+        self.path_publisher = self.create_publisher(Path, '/path_follower',10)
 
         # Radio subscriber & publisher
         self.create_subscription(Radio,'/radio', self.radio_callback, 4)
@@ -67,6 +72,7 @@ class Follower(Node):
         self.anomaly_check = True
         self.onetime_check = True
         self.start_check = True
+        self.malfun_check = False
 
         self.state = 6
 
@@ -101,7 +107,6 @@ class Follower(Node):
         self.timer = self.create_timer(timer_period, self.timer_callback)
 
 
-
     def cb_params(self, data):
 
         for param in data:
@@ -121,6 +126,30 @@ class Follower(Node):
         except:
             pass
 
+
+    def safety_gap(self, sentinel_pose, sentinel_state):
+        delta_dist, delta_theta = distance_delta(self.current_pose, sentinel_pose)
+
+        if delta_dist < (self.gap_dist * 2) and sentinel_state == 5:
+            self.stop()
+            self.state = 1
+            self.flag = True
+            self.follow_pub.publish(PathMsg(path=self.sentinel_path, state=1, linear_speed=self.linear_speed, angular_speed=self.angular_speed))
+            self.status = 'Turning'
+
+        if delta_dist > (self.gap_dist * 2):
+            self.state = 3  # speed up
+        elif delta_dist < 0.6:
+            self.state = 5
+            # self.get_logger().info('too close!')
+        elif delta_dist < self.gap_dist:
+            self.state = 4  # slow down
+        else:
+            self.state = 0  # normal speed 
+        
+        self.path_publisher.publish(self.sentinel_path)
+        self.follow_pub.publish(PathMsg(path=self.sentinel_path, state=self.state, linear_speed=self.linear_speed, angular_speed=self.angular_speed))
+                
     def radio_callback(self, radio_msg):
         # Only take into account the messages from the sentinel robot
         if radio_msg.source == 1:
@@ -145,40 +174,22 @@ class Follower(Node):
                         self.state = 1
 
                         self.follow_pub.publish(PathMsg(path=self.sentinel_path, state=self.state, linear_speed=self.linear_speed, angular_speed=self.angular_speed))
+                        self.path_publisher.publish(self.sentinel_path)
                         self.status = 'Turning'
 
                     self.anomaly_check = False
                 
-                
-            
+
             elif sentinel_state != 6:
 
                 if self.mov_node == 'speed_controller':
                     # SPEED CONTROLLER
-                    
-                    # speed adjustment depending on the position of the sentinel
+
+                    # keep track of safety gap
                     if self.status == 'Following':
-                        delta_dist, delta_theta = distance_delta(self.current_pose, sentinel_pose)
+                        self.safety_gap(sentinel_pose, sentinel_state)
 
-                        if delta_dist < (self.gap_dist * 2) and sentinel_state == 5:
-                            self.stop()
-                            self.state = 1
-                            self.flag = True
-                            self.follow_pub.publish(PathMsg(path=self.sentinel_path, state=1, linear_speed=self.linear_speed, angular_speed=self.angular_speed))
-                            self.status = 'Turning'
-
-                        if delta_dist > (self.gap_dist * 2):
-                            self.state = 3  # speed up
-                        elif delta_dist < 0.5:
-                            self.state = 5
-                            self.get_logger().info('too close!')
-                        elif delta_dist < self.gap_dist:
-                            self.state = 4  # slow down
-                        else:
-                            self.state = 0  # normal speed 
-                        
-                        self.follow_pub.publish(PathMsg(path=self.sentinel_path, state=self.state, linear_speed=self.linear_speed, angular_speed=self.angular_speed))
-                
+                    
                 if sentinel_state == 7:
                     self.stop()
                     self.status = 'Waiting'
@@ -188,13 +199,13 @@ class Follower(Node):
                         self.state = 7
                         self.sentinel_path = Path()
 
-                elif self.status == 'Waiting' and sentinel_state == 0:
+                elif self.status == 'Waiting' and (sentinel_state == 0 or sentinel_state == 4):
                     self.status = 'Following'
                     self.state = 0
                     self.get_logger().info('Lets go!')
                     self.counter = 0
                     self.flag = False
-
+                
                 if self.start_check:
                     self.status = 'Following'
                     self.get_logger().info('Lets go!')
@@ -203,8 +214,10 @@ class Follower(Node):
                 if sentinel_state == 5 and self.state != 1:
                     past_pose = self.sentinel_path.poses[-1]
                     delta_dist, delta_theta = distance_delta(past_pose, sentinel_pose)
-                    if delta_dist < (self.gap_dist * 2):
+                    if delta_dist < (self.gap_dist * 2.5) :
                         self.state = 1
+                        self.path_publisher.publish(self.sentinel_path)
+                        self.follow_pub.publish(PathMsg(path=self.sentinel_path, state=self.state, linear_speed=self.linear_speed, angular_speed=self.angular_speed))
                         self.get_logger().info('Something is wrong! Lets go back to base...')
                         self.status = 'Turning'
                         self.flag = True
@@ -217,10 +230,15 @@ class Follower(Node):
                     past_pose = self.sentinel_path.poses[-1]
                     delta_dist, delta_theta = distance_delta(past_pose, sentinel_pose)
 
-                    if delta_dist > self.gap_dist or abs(delta_theta) > self.gap_theta:
+                    if delta_dist > 0.1:
                         self.sentinel_path.poses.append(sentinel_pose)
                         self.last_pose_sentinel = self.sentinel_path.poses[-1]
 
+
+                # if len(self.sentinel_path.poses) == 0:
+                #     self.sentinel_path.header.frame_id = sentinel_pose.header.frame_id
+
+                self.sentinel_path.poses.append(sentinel_pose)
 
 
     def pose_callback(self, noisy_pose):
@@ -237,6 +255,10 @@ class Follower(Node):
 
             if len(self.follower_path.poses) == 0:
                 self.follower_path.header.frame_id = noisy_pose.header.frame_id
+                theta = compute_theta(noisy_pose)
+                theta += pi
+                noisy_pose.pose.orientation.w = np.cos(theta/2)
+                noisy_pose.pose.orientation.z = np.sin(theta/2)
                 self.follower_path.poses.append(noisy_pose)
             
             try:
@@ -279,6 +301,7 @@ class Follower(Node):
                         noisy_pose.pose.orientation.z = np.sin(theta/2)
                         self.follower_path.poses.insert(0, noisy_pose)
 
+                    self.path_publisher.publish(self.sentinel_path)
                     self.follow_pub.publish(PathMsg(path=self.sentinel_path, state=self.state, linear_speed=self.linear_speed, angular_speed=self.angular_speed))
 
 
@@ -302,22 +325,46 @@ class Follower(Node):
                 # SPEED CONTROLLER
                 if self.status == 'Turning':
 
-                    # if self.counter < 420:
-                    if self.counter < 105:
+                    if self.counter < 210:
+                    # if self.counter < 115:
                         self.turn()
                         self.counter += 1
                     else:
                         self.stop()
 
-                        # if self.state == 1:
-                        #     self.status = 'Base'
-                        #     self.get_logger().info('Going back to base')
-                        # else:
-                        #     self.flag = False
+                        if self.state == 1:
+                            self.status = 'Base'
+                            self.get_logger().info('Going back to base')
+                        else:
+                            self.flag = False
 
                 elif self.onetime_check and self.status == 'Base':
+                    path_line = create_line_object(self.follower_path)
 
-                    self.follower_path.poses = self.follower_path.poses[1:]
+                    current_point = Point(self.current_pose.pose.position.x, self.current_pose.pose.position.y)
+                    
+                    # Obtain the path done by the sentinel so far
+                    end_point = path_line.interpolate(path_line.project(current_point))
+
+                    x = split(path_line, end_point)
+                    path_line = x.geoms[0]
+
+                    target_path = list(path_line.coords)
+
+                    recorded_path = [a + (b - a) * s + np.random.normal(scale=0.025) 
+                        for a, b in zip(np.asarray(target_path), np.asarray(target_path)[1:]) 
+                        for s in np.arange(0, 1, 0.1)]
+
+                    s = recorded_path[0]
+                    t = recorded_path[-1]
+
+                    path = find_path(recorded_path, s, t, 0.05)
+
+                    line_path = LineString(path)
+                    # line_path = line_path.simplify(0.1)
+
+                    self.follower_path.poses = construct_path(list(line_path.coords))
+
                     self.path_pub.publish(PathMsg(path=self.follower_path, state=2, linear_speed=self.linear_speed, angular_speed=self.angular_speed))
 
                     self.onetime_check = False
@@ -367,13 +414,15 @@ class Follower(Node):
     def turn(self):
         self.velocity.linear.x = 0.0
         self.velocity.linear.y = 0.0
-        self.velocity.angular.z = 0.6
+        self.velocity.angular.z = 0.4
         self.velocity_pub.publish(self.velocity)
 
 
     def stop(self):
         self.led_pub.publish(LEDEffect(effect=LEDEffect.ON, submask=255, color=black))
-        self.velocity = Twist()
+        self.velocity.linear.x = 0.0
+        self.velocity.linear.y = 0.0
+        self.velocity.angular.z = 0.0
         self.velocity_pub.publish(self.velocity)
     
 

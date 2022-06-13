@@ -24,8 +24,17 @@
     anomaly_pub:
       type: topic
       interface_type: "std_msgs/msg/Bool"
-      topic_name: anomaly
-      deadman_buttons: [6, 2]  # RT
+      topic_name: /anomaly
+      deadman_buttons: [3]  # RT
+      message_value:
+        data:
+          value: true
+
+    malfunction_pub:
+      type: topic
+      interface_type: "std_msgs/msg/Bool"
+      topic_name: /trigger
+      deadman_buttons: [2]  # RT
       message_value:
         data:
           value: true
