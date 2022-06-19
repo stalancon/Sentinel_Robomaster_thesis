@@ -60,5 +60,8 @@ ros2 launch sentinel {single_robot|multirobot}.launch <key_1>:=<value_1> <key_2>
 
 
 #### Multirobot-specific Configurations
+
+| key         | type    | valid values     | default | description                                       |
+| ----------- | ------- | ---------------- | ------- | ------------------------------------------------- |
 | gap_dist | float |             | 1.0    | Indicate the target gap distance that the two robots should keep                    |
 | gap_theta | float |             | 0.52     | Indicate the target theta gap between the two robots                    |
