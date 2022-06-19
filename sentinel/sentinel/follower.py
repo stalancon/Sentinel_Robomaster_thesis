@@ -3,6 +3,7 @@
 import rclpy
 import numpy as np
 import math
+import time
 
 from rclpy.node import Node
 from math import pi
@@ -15,13 +16,37 @@ from rclpy.action import ActionClient
 from sentinel_msgs.action import FollowPath
 from rcl_interfaces.msg import SetParametersResult
 from shapely.geometry import LineString, Point
+from robomaster_msgs.action import Move
 from shapely.ops import split
 from sentinel.utils import compute_theta, construct_path, distance_delta, find_path, create_line_object
 
+green = ColorRGBA(r=0.0, g=1.0, b=0.0, a=0.0)
 blue = ColorRGBA(r=0.0, g=1.0, b=1.0, a=0.0)
 black = ColorRGBA(r=0.0, g=0.0, b=0.0, a=0.0)
 red = ColorRGBA(r=1.0, g=0.0, b=0.0, a=0.0)
 yellow = ColorRGBA(r=1.0, g=1.0, b=0.0, a=0.0)
+
+def wait_for_completion(future):
+    state = {'done': False,'rejected':False}
+
+    def result_cb(future):
+        state['result'] = future.result().result
+        state['done'] = True
+
+    def accepted_cb(future):
+        goal_handle = future.result()
+        if goal_handle.accepted:
+            result_future = goal_handle.get_result_async()
+            result_future.add_done_callback(result_cb)
+        else:
+            state['rejected'] = True
+
+    future.add_done_callback(accepted_cb)
+
+    while not state['done']:
+        time.sleep(0.1)
+
+    return state.get('result')
 
 class Follower(Node):
 
@@ -38,6 +63,8 @@ class Follower(Node):
         # Velocity publisher
         self.velocity_pub = self.create_publisher(Twist, 'cmd_vel', 10)
         self.velocity = Twist()
+
+        self.action_client = ActionClient(self, Move, 'move')
 
         self.path_publisher = self.create_publisher(Path, '/path_follower',10)
 
@@ -73,6 +100,7 @@ class Follower(Node):
         self.onetime_check = True
         self.start_check = True
         self.malfun_check = False
+        self.turn_check = False
 
         self.state = 6
 
@@ -159,6 +187,7 @@ class Follower(Node):
             if sentinel_state == 1:  # check if there's an anomaly
                 if self.anomaly_check:
                     self.flag = True
+                    self.led_pub.publish(LEDEffect(effect=LEDEffect.ON, color=red))
 
                     if self.mov_node == 'action_client':
                         # ACTION CLIENT
@@ -172,7 +201,6 @@ class Follower(Node):
                     elif self.mov_node == 'speed_controller':
                         # SPEED CONTROLLER
                         self.state = 1
-
                         self.follow_pub.publish(PathMsg(path=self.sentinel_path, state=self.state, linear_speed=self.linear_speed, angular_speed=self.angular_speed))
                         self.path_publisher.publish(self.sentinel_path)
                         self.status = 'Turning'
@@ -221,6 +249,7 @@ class Follower(Node):
                         self.get_logger().info('Something is wrong! Lets go back to base...')
                         self.status = 'Turning'
                         self.flag = True
+                        # self.turn_check = False
 
                 # Create/Update sentinel path
                 if len(self.sentinel_path.poses) == 0:
@@ -251,7 +280,7 @@ class Follower(Node):
 
 
         if self.status == 'Following':
-            self.led_pub.publish(LEDEffect(effect=LEDEffect.ON, color=blue))
+            self.led_pub.publish(LEDEffect(effect=LEDEffect.ON, color=green))
 
             if len(self.follower_path.poses) == 0:
                 self.follower_path.header.frame_id = noisy_pose.header.frame_id
@@ -306,8 +335,6 @@ class Follower(Node):
 
 
         if self.flag:
-            self.led_pub.publish(LEDEffect(effect=LEDEffect.ON, color=red))
-
             if self.mov_node == 'action_client':
                 # ACTION CLIENT
                 if not self.moving_flag:
@@ -324,9 +351,14 @@ class Follower(Node):
             elif self.mov_node == 'speed_controller':
                 # SPEED CONTROLLER
                 if self.status == 'Turning':
-
-                    if self.counter < 210:
-                    # if self.counter < 115:
+                    # theta = compute_theta(noisy_pose)
+                    # theta += pi
+                    # if not self.turn_check:
+                    #     self.stop()
+                    #     self.move(theta, 0.3)
+                    #     self.turn_check = True
+                    # if self.counter < 300:
+                    if self.counter < 120:
                         self.turn()
                         self.counter += 1
                     else:
@@ -341,6 +373,7 @@ class Follower(Node):
                 elif self.onetime_check and self.status == 'Base':
                     path_line = create_line_object(self.follower_path)
 
+                    self.led_pub.publish(LEDEffect(effect=LEDEffect.ON, color=blue))
                     current_point = Point(self.current_pose.pose.position.x, self.current_pose.pose.position.y)
                     
                     # Obtain the path done by the sentinel so far
@@ -351,7 +384,7 @@ class Follower(Node):
 
                     target_path = list(path_line.coords)
 
-                    recorded_path = [a + (b - a) * s + np.random.normal(scale=0.025) 
+                    recorded_path = [a + (b - a) * s + np.random.normal(scale=0.05) 
                         for a, b in zip(np.asarray(target_path), np.asarray(target_path)[1:]) 
                         for s in np.arange(0, 1, 0.1)]
 
@@ -361,7 +394,7 @@ class Follower(Node):
                     path = find_path(recorded_path, s, t, 0.05)
 
                     line_path = LineString(path)
-                    # line_path = line_path.simplify(0.1)
+                    line_path = line_path.simplify(0.09)
 
                     self.follower_path.poses = construct_path(list(line_path.coords))
 
@@ -401,6 +434,8 @@ class Follower(Node):
         feedback = feedback_msg.feedback
         num = feedback.progress
 
+        # self.get_logger().info(f'num {num}')
+
         if num == 1 or self.status == 'Cancelled':
             self.moving_flag = False
 
@@ -408,8 +443,27 @@ class Follower(Node):
                 
                 self.flag = False
                 self.get_logger().info(f'Back at base')
+                self.get_logger().info('here for some reason')
                 self.follower_path = Path()
+
+            # if self.status == 'Turning' and self.state == 1:
+            #     self.status = 'Base'
+            #     self.get_logger().info('Going back to base')
+            # else:
+            #     self.flag = False
+            #     self.turn_check = False
+
         
+    def move(self, theta, angular_speed):
+        goal_msg = Move.Goal()
+        goal_msg.theta = theta
+        goal_msg.angular_speed = angular_speed
+        
+        # self.get_logger().info(f'goal {goal_msg}')
+        future = self.action_client.send_goal_async(goal_msg, feedback_callback=self.feedback_callback)
+        # wait_for_completion(future)
+
+        return True
 
     def turn(self):
         self.velocity.linear.x = 0.0

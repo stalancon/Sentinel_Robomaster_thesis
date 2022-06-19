@@ -59,7 +59,7 @@ class Navigator(Node):
             self.status = 'Driving'
             self.counter = 0
 
-            self.path_received = False
+        self.path_received = False
 
         # flag to indicate an anomaly has been heard
         self.flag = False
@@ -189,7 +189,7 @@ class Navigator(Node):
         if msg.data:
             self.flag = True
 
-            if self.autonomy_flag:
+            if self.autonomy_flag and self.mov_node == 'speed_controller':
                 self.path_pub.publish(PathMsg(path=self.path_to_follow, state=1, linear_speed=self.linear_speed, angular_speed=self.angular_speed))
 
 

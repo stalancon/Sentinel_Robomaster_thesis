@@ -33,7 +33,7 @@ def transform_from_state(x: float, y: float, theta: float):
     return PyKDL.Frame(V=pos, R=rot)
 
 
-def transform_from_odom_msg(odom_msg: Odometry):
+def transform_from_odom_msg(odom_msg):
     position_msg = odom_msg.pose.pose.position
     pos = PyKDL.Vector(position_msg.x, position_msg.y, position_msg.z)
     quaterion_msg = odom_msg.pose.pose.orientation

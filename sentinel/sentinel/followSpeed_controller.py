@@ -42,7 +42,6 @@ class FollowSpeed_controller(Node):
         if self.path_created:
 
             if not self.status == 'done':
-                self.gp.header.frame_id = noisy_pose.header.frame_id
 
                 pose_point = Point(noisy_pose.pose.position.x, noisy_pose.pose.position.y)
 
@@ -82,6 +81,7 @@ class FollowSpeed_controller(Node):
 
                 self.velocity_pub.publish(self.velocity)
 
+                # self.gp.header.frame_id = noisy_pose.header.frame_id
                 # self.gp.pose.position.x = goal_pose.x
                 # self.gp.pose.position.y = goal_pose.y
                 # self.gp.pose.orientation.w = np.cos(target_theta/2)

@@ -43,15 +43,15 @@ class Speed_controller(Node):
 
             if not self.status == 'done':
 
-                self.gp.header.frame_id = noisy_pose.header.frame_id
+                # self.gp.header.frame_id = noisy_pose.header.frame_id
                 pose_point = Point(noisy_pose.pose.position.x, noisy_pose.pose.position.y)
 
                 # Get the point in the line that's closest to the current pose
                 s = self.path_line.project(pose_point)
                 goal_pose = self.path_line.interpolate(s)
                 
-                self.gp.pose.position.x = goal_pose.x
-                self.gp.pose.position.y = goal_pose.y
+                # self.gp.pose.position.x = goal_pose.x
+                # self.gp.pose.position.y = goal_pose.y
 
                 # Get distance between the current position and the goal pose
                 dist_goal = goal_pose.distance(pose_point)
@@ -68,6 +68,7 @@ class Speed_controller(Node):
 
                         if self.state == 2:
                             self.get_logger().info('Back at base')
+                            self.get_logger().info('here')
                         else:
                             self.get_logger().info('End of path')
                 else:
@@ -84,9 +85,9 @@ class Speed_controller(Node):
                     # Vector
                     vector = [next_pose.position.x, next_pose.position.y]
 
-                    self.gp.pose.orientation.w = np.cos(target_theta/2)
-                    self.gp.pose.orientation.z = np.sin(target_theta/2)
-                    self.goal_pose_pub.publish(self.gp)
+                    # self.gp.pose.orientation.w = np.cos(target_theta/2)
+                    # self.gp.pose.orientation.z = np.sin(target_theta/2)
+                    # self.goal_pose_pub.publish(self.gp)
                     
                     theta = target_theta - current_theta
 

@@ -14,10 +14,11 @@ from sentinel_msgs.msg import Radio, PathMsg
 from shapely.geometry import Point, LineString
 from shapely.ops import split
 from rcl_interfaces.msg import SetParametersResult
+from robomaster_msgs.action import Move
 
 from rclpy.action import ActionClient
 from sentinel_msgs.action import FollowPath
-from sentinel.utils import distance_delta, construct_path, create_line_object
+from sentinel.utils import distance_delta, construct_path, create_line_object, compute_theta
 
 
 green = ColorRGBA(r=0.0, g=1.0, b=0.0, a=0.0)
@@ -50,7 +51,9 @@ class Sentinel(Node):
         self.velocity_pub = self.create_publisher(Twist, 'cmd_vel', 10)
         self.velocity = Twist()
 
-        # self.path_publisher = self.create_publisher(Path, '/path_rviz', 1)
+        self.action_client = ActionClient(self, Move, 'move')
+
+        self.path_publisher = self.create_publisher(Path, '/path_rviz', 1)
 
         # radio subscriber & publisher
         self.create_subscription(Radio,'/radio', self.radio_callback, 4)
@@ -236,7 +239,9 @@ class Sentinel(Node):
             if cp == True:
                 line2.append(pair[1])
 
-        line2 = LineString(line2)
+        end_pose = Point(new_intersection.coords[-1])
+
+        line2 = LineString(line2[:])
         line2= line2.simplify(0.1)
         
         self.new_path_line = LineString(new_intersection.coords[:-1] + line2.coords[:])
@@ -248,8 +253,6 @@ class Sentinel(Node):
         self.new_path.header.frame_id = follower_pose.header.frame_id
 
         self.get_logger().info('we have a new path! ')
-
-        end_pose = Point(line2.coords[0])
 
         # Add buffer zone to the location of the follower
         self.end_dist = self.new_path_line.project(end_pose)
@@ -333,7 +336,7 @@ class Sentinel(Node):
                 self.get_logger().info('Path sent to speed controller')
             self.once = False
 
-            # self.path_publisher.publish(self.path_to_follow)
+            self.path_publisher.publish(self.path_to_follow)
 
         if self.state != 1 and self.double_path:
             # Create/Update sentinel path
@@ -352,18 +355,23 @@ class Sentinel(Node):
         if self.double_path and self.state == 1:    
             if not self.turn_check:
 
-                if self.turn_counter < 200:
-                    self.turn()
-                    self.turn_counter += 1 
-                else:
-                    self.stop()
+                # if self.turn_counter < 200:
+                #     self.turn()
+                #     self.turn_counter += 1 
+                # else:
+                #     self.stop()
+                #     self.turn_check = True
+                #     self.get_logger().info('done turning....')
+                theta = compute_theta(noisy_pose)
+                theta += pi
+                if not self.turn_check:
+                    self.move(theta, 0.4)
                     self.turn_check = True
-                    self.get_logger().info('done turning....')
 
             if self.path_updated and self.turn_check:
                 self.state = 7
                 self.path_updated = False
-                # self.path_publisher.publish(self.new_path)
+                self.path_publisher.publish(self.new_path)
                 self.path_pub.publish(PathMsg(path=self.new_path, state=2, linear_speed=0.4, angular_speed=0.6))
                 self.get_logger().info('New path was sent')
 
@@ -405,7 +413,12 @@ class Sentinel(Node):
         num = feedback.progress
 
         if num == 1:
-            self.get_logger().info(f'End of the path')
+            if self.double_path:
+                self.stop()
+                self.turn_check = True
+                self.get_logger().info('done turning....')
+            else:
+                self.get_logger().info(f'End of the path')
 
     def listener_callback(self, msg):
         if msg.data:
@@ -419,6 +432,15 @@ class Sentinel(Node):
                     self.followPath_goal_handle.cancel_goal_async()
                     self.followPath_goal_handle = None
 
+    def move(self, theta, angular_speed):
+        goal_msg = Move.Goal()
+        goal_msg.theta = theta
+        goal_msg.angular_speed = angular_speed
+        
+        future = self.action_client.send_goal_async(goal_msg, feedback_callback=self.feedback_callback)
+        # wait_for_completion(future)
+
+        return True
 
     def malfunction_callback(self, msg):
         if msg:
