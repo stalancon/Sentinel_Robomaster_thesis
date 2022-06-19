@@ -263,10 +263,6 @@ class Follower(Node):
                         self.sentinel_path.poses.append(sentinel_pose)
                         self.last_pose_sentinel = self.sentinel_path.poses[-1]
 
-
-                # if len(self.sentinel_path.poses) == 0:
-                #     self.sentinel_path.header.frame_id = sentinel_pose.header.frame_id
-
                 self.sentinel_path.poses.append(sentinel_pose)
 
 
@@ -351,13 +347,6 @@ class Follower(Node):
             elif self.mov_node == 'speed_controller':
                 # SPEED CONTROLLER
                 if self.status == 'Turning':
-                    # theta = compute_theta(noisy_pose)
-                    # theta += pi
-                    # if not self.turn_check:
-                    #     self.stop()
-                    #     self.move(theta, 0.3)
-                    #     self.turn_check = True
-                    # if self.counter < 300:
                     if self.counter < 120:
                         self.turn()
                         self.counter += 1
@@ -434,8 +423,6 @@ class Follower(Node):
         feedback = feedback_msg.feedback
         num = feedback.progress
 
-        # self.get_logger().info(f'num {num}')
-
         if num == 1 or self.status == 'Cancelled':
             self.moving_flag = False
 
@@ -443,27 +430,8 @@ class Follower(Node):
                 
                 self.flag = False
                 self.get_logger().info(f'Back at base')
-                self.get_logger().info('here for some reason')
                 self.follower_path = Path()
 
-            # if self.status == 'Turning' and self.state == 1:
-            #     self.status = 'Base'
-            #     self.get_logger().info('Going back to base')
-            # else:
-            #     self.flag = False
-            #     self.turn_check = False
-
-        
-    def move(self, theta, angular_speed):
-        goal_msg = Move.Goal()
-        goal_msg.theta = theta
-        goal_msg.angular_speed = angular_speed
-        
-        # self.get_logger().info(f'goal {goal_msg}')
-        future = self.action_client.send_goal_async(goal_msg, feedback_callback=self.feedback_callback)
-        # wait_for_completion(future)
-
-        return True
 
     def turn(self):
         self.velocity.linear.x = 0.0

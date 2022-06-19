@@ -355,18 +355,13 @@ class Sentinel(Node):
         if self.double_path and self.state == 1:    
             if not self.turn_check:
 
-                # if self.turn_counter < 200:
-                #     self.turn()
-                #     self.turn_counter += 1 
-                # else:
-                #     self.stop()
-                #     self.turn_check = True
-                #     self.get_logger().info('done turning....')
-                theta = compute_theta(noisy_pose)
-                theta += pi
-                if not self.turn_check:
-                    self.move(theta, 0.4)
+                if self.turn_counter < 200:
+                    self.turn()
+                    self.turn_counter += 1 
+                else:
+                    self.stop()
                     self.turn_check = True
+                    self.get_logger().info('done turning....')
 
             if self.path_updated and self.turn_check:
                 self.state = 7
@@ -432,15 +427,6 @@ class Sentinel(Node):
                     self.followPath_goal_handle.cancel_goal_async()
                     self.followPath_goal_handle = None
 
-    def move(self, theta, angular_speed):
-        goal_msg = Move.Goal()
-        goal_msg.theta = theta
-        goal_msg.angular_speed = angular_speed
-        
-        future = self.action_client.send_goal_async(goal_msg, feedback_callback=self.feedback_callback)
-        # wait_for_completion(future)
-
-        return True
 
     def malfunction_callback(self, msg):
         if msg:

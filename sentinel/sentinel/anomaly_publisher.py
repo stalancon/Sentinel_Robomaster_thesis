@@ -16,9 +16,7 @@ class AnomalyPublisher(Node):
 
     def timer_callback(self):
         msg = Bool()
-        
-        # publish 'False' until we get an anomaly then publish 'True'
-        # if (self.i > 7 and self.i < 9) or (self.i > 60 and self.i < 62):
+  
         if self.i == 33:
             msg.data = True        
 
