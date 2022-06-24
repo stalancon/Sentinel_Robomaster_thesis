@@ -5,11 +5,7 @@ Master Thesis project
 ## Pre-requisites
 
 ### ROS2
-Install a current version of ROS2 (foxy or galactic), following the official instructions. and then install colcon
-
-```bash
-sudo apt install python3-colcon-common-extensions
-```
+Install a current version of ROS2 (foxy or galactic), following the [official instructions](https://docs.ros.org/en/galactic/Installation.html).
 
 ### Robomaster ROS
 Install [this repository](https://github.com/jeguzzi/robomaster_ros) that contains a ROS2 driver for the DJI Robomaster family of robots (EP and S1). 
